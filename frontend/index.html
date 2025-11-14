@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Infinite Canvas Whiteboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Set the font and ensure the body fills the viewport */
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            overflow: hidden; /* Prevent body scrollbars */
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+        }
+        /* Style the canvas container to take all available space */
+        #canvasContainer {
+            flex-grow: 1;
+            background-color: #f7f7f9;
+            cursor: default;
+            user-select: none;
+        }
+        /* Style the actual canvas element */
+        #drawingCanvas {
+            display: block;
+            touch-action: none; /* Disable default touch actions */
+            background-image:
+                linear-gradient(to right, #e8e8e8 1px, transparent 1px),
+                linear-gradient(to bottom, #e8e8e8 1px, transparent 1px);
+            background-size: 50px 50px;
+        }
+
+        /* Wrap custom component classes using @apply inside @layer components */
+        @layer components {
+            .tool-button {
+                transition: all 0.1s;
+                @apply p-2 rounded-lg bg-white border border-gray-200 shadow-md text-gray-700 hover:bg-indigo-100 hover:border-indigo-400;
+            }
+            .tool-button.active {
+                @apply bg-indigo-500 border-indigo-600 text-white shadow-lg;
+            }
+            .tooltip {
+                /* visibility: hidden; */
+                @apply absolute z-10 px-2 py-1 text-xs font-medium text-white bg-gray-700 rounded-lg shadow-sm -mt-10 opacity-0 transition-opacity duration-300;
+            }
+            .tool-button:hover .tooltip {
+                visibility: visible;
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+
+    <!-- Increased main spacing from space-x-3 to space-x-4 -->
+    <div id="toolbar" class="p-3 shadow-lg bg-white flex justify-center items-center space-x-4 z-20">
+        <!-- Color Picker -->
+        <div class="flex items-center space-x-2 border-r pr-4">
+            <label for="colorPicker" class="text-sm font-medium text-gray-600">Color:</label>
+            <input type="color" id="colorPicker" value="#000000" class="w-8 h-8 rounded-full border-2 border-gray-300 cursor-pointer">
+        </div>
+        
+        <!-- Tool Buttons -->
+        <!-- Increased spacing from space-x-2 to space-x-3 -->
+        <div id="toolContainer" class="flex space-x-3">
+            <!-- Pan Tool (Default behavior activated by Spacebar) -->
+            <button id="tool-pan" data-tool="pan" class="tool-button relative" title="Pan (Hold Spacebar)">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75l16.5 16.5m-16.5 0h16.5M3.75 3.75v16.5" />
+                </svg>
+                <span class="tooltip">Pan (Hold Space)</span>
+            </button>
+
+            <!-- Pen Tool -->
+            <button id="tool-pen" data-tool="pen" class="tool-button active relative" title="Freehand Pen">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 18.07a4.995 4.995 0 01-1.48 1.48l-4.5 4.5 1.096-4.384a4.997 4.997 0 011.48-1.48l9.166-9.165z" />
+                </svg>
+                <span class="tooltip">Pen Tool</span>
+            </button>
+
+            <!-- Rectangle Tool -->
+            <button id="tool-rectangle" data-tool="rectangle" class="tool-button relative" title="Rectangle">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z" />
+                </svg>
+                <span class="tooltip">Rectangle Tool</span>
+            </button>
+
+            <!-- Ellipse Tool -->
+            <button id="tool-ellipse" data-tool="ellipse" class="tool-button relative" title="Ellipse">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6">
+                    <ellipse cx="12" cy="12" rx="10" ry="6"></ellipse>
+                </svg>
+                <span class="tooltip">Ellipse Tool</span>
+            </button>
+        </div>
+
+        <!-- Image Upload -->
+        <!-- Increased spacing from pl-3 to pl-4 and space-x-2 to space-x-3 -->
+        <div class="border-l pl-4 flex space-x-3 items-center">
+            <label for="imageUpload" class="tool-button relative cursor-pointer" title="Upload Image">
+                <!-- NEW, cleaner image icon SVG -->
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0L15.75 17.25m-4.5-5.25l4.5 4.5M21 18V8.25A2.25 2.25 0 0018.75 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V15" />
+                </svg>
+                <span class="tooltip">Upload Image</span>
+                <input type="file" id="imageUpload" accept="image/*" class="hidden">
+            </label>
+        </div>
+        
+        <!-- Action Buttons -->
+        <!-- Increased spacing from pl-3 to pl-4 and space-x-2 to space-x-3 -->
+        <div class="border-l pl-4 flex space-x-3 items-center">
+            <button id="undoButton" class="tool-button relative" title="Undo Last Action">
+                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+                </svg>
+                <span class="tooltip">Undo</span>
+            </button>
+        </div>
+    </div>
+
+    <div id="canvasContainer" class="relative">
+        <canvas id="drawingCanvas"></canvas>
+        <div id="messageBox" class="absolute top-4 right-4 bg-yellow-100 border border-yellow-400 text-yellow-700 p-3 rounded-lg shadow-xl hidden transition-opacity duration-300"></div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('drawingCanvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('canvasContainer');
+        const messageBox = document.getElementById('messageBox');
+        const colorPicker = document.getElementById('colorPicker');
+        const toolButtons = document.querySelectorAll('#toolContainer button');
+        const imageUpload = document.getElementById('imageUpload');
+        const undoButton = document.getElementById('undoButton');
+        
+        // --- Core State Variables ---
+        let elements = []; // Stores all drawn shapes/lines/images
+        let currentTool = 'pen';
+        let currentColor = '#000000';
+        
+        // Pan and Zoom State
+        let scale = 1.0;
+        let offsetX = 0;
+        let offsetY = 0;
+        
+        // Drawing State
+        let isDrawing = false;
+        let startPoint = { x: 0, y: 0 }; // World coordinates (unscaled/untranslated)
+        let lastPoint = { x: 0, y: 0 }; // World coordinates
+        let activeElement = null; // The element currently being drawn
+        let isPanning = false;
+        let panStartScreenX = 0;
+        let panStartScreenY = 0;
+        let initialOffsetX = 0;
+        let initialOffsetY = 0;
+
+        // Utility function to show temporary messages
+        function showMessage(text) {
+            messageBox.textContent = text;
+            messageBox.classList.remove('hidden', 'opacity-0');
+            messageBox.classList.add('opacity-100');
+            setTimeout(() => {
+                messageBox.classList.remove('opacity-100');
+                messageBox.classList.add('opacity-0');
+                setTimeout(() => messageBox.classList.add('hidden'), 300);
+            }, 3000);
+        }
+
+        // --- Coordinate Conversion ---
+
+        // Convert screen coordinates (client event) to world coordinates
+        function screenToWorld(clientX, clientY) {
+            const rect = canvas.getBoundingClientRect();
+            const screenX = clientX - rect.left;
+            const screenY = clientY - rect.top;
+            
+            // Reverse translation, then reverse scaling
+            const worldX = (screenX - offsetX) / scale;
+            const worldY = (screenY - offsetY) / scale;
+            
+            return { x: worldX, y: worldY };
+        }
+
+        // --- Canvas Setup and Redraw ---
+
+        function resizeCanvas() {
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            redrawCanvas();
+        }
+
+        function redrawCanvas() {
+            // Clear the canvas entirely
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Apply global transformations
+            ctx.save();
+            ctx.translate(offsetX, offsetY);
+            ctx.scale(scale, scale);
+
+            // Redraw Grid (static for visual coherence, doesn't translate with canvas)
+            // A truly infinite canvas grid should be drawn relative to offsets, but for simplicity
+            // and performance, we'll draw the grid visually by setting the container background, 
+            // which already looks like an infinite grid when panning.
+
+            // Draw all elements
+            for (const el of elements) {
+                drawElement(el);
+            }
+
+            // Draw the active element preview (if drawing)
+            if (activeElement) {
+                drawElement(activeElement);
+            }
+
+            // Restore canvas state (removes scale/translate for subsequent non-element drawing like UI overlays)
+            ctx.restore();
+        }
+
+        function drawElement(el) {
+            ctx.strokeStyle = el.color;
+            ctx.fillStyle = el.color;
+            ctx.lineWidth = 3 / scale; // Line width scales inversely with zoom for a consistent look
+
+            switch (el.type) {
+                case 'line':
+                    ctx.beginPath();
+                    if (el.points.length > 0) {
+                        ctx.moveTo(el.points[0].x, el.points[0].y);
+                        for (let i = 1; i < el.points.length; i++) {
+                            ctx.lineTo(el.points[i].x, el.points[i].y);
+                        }
+                    }
+                    ctx.stroke();
+                    break;
+
+                case 'rectangle':
+                    ctx.strokeRect(el.x, el.y, el.w, el.h);
+                    break;
+
+                case 'ellipse':
+                    ctx.beginPath();
+                    const radiusX = Math.abs(el.w / 2);
+                    const radiusY = Math.abs(el.h / 2);
+                    const centerX = el.x + el.w / 2;
+                    const centerY = el.y + el.h / 2;
+                    ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, 2 * Math.PI);
+                    ctx.stroke();
+                    break;
+                
+                case 'image':
+                    if (el.img) {
+                        ctx.drawImage(el.img, el.x, el.y, el.w, el.h);
+                        // Draw a light border for selection visibility
+                        ctx.strokeStyle = 'rgba(0, 0, 255, 0.5)';
+                        ctx.lineWidth = 1 / scale;
+                        ctx.strokeRect(el.x, el.y, el.w, el.h);
+                    }
+                    break;
+            }
+        }
+
+        // --- Tool Management ---
+
+        function selectTool(toolName) {
+            currentTool = toolName;
+            toolButtons.forEach(btn => {
+                if (btn.getAttribute('data-tool') === toolName) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+            // Update cursor based on tool
+            container.style.cursor = toolName === 'pan' ? 'grabbing' : 
+                                     toolName === 'pen' ? 'crosshair' : 'default';
+        }
+
+        toolButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const tool = button.getAttribute('data-tool');
+                selectTool(tool);
+            });
+        });
+
+        colorPicker.addEventListener('change', (e) => {
+            currentColor = e.target.value;
+        });
+        
+        // Initial tool selection
+        selectTool('pen');
+
+        // --- Event Handlers ---
+
+        function handleMouseDown(e) {
+            if (e.button !== 0 && e.button !== 2) return; // Only allow left click (0) and right click (2)
+
+            const worldPos = screenToWorld(e.clientX, e.clientY);
+            startPoint = { x: worldPos.x, y: worldPos.y };
+            lastPoint = startPoint;
+
+            // Panning Logic (Spacebar overrides current tool)
+            if (isPanning || e.code === 'Space' || e.button === 2) {
+                isPanning = true;
+                container.style.cursor = 'grabbing';
+                panStartScreenX = e.clientX;
+                panStartScreenY = e.clientY;
+                initialOffsetX = offsetX;
+                initialOffsetY = offsetY;
+                return;
+            }
+
+            // Drawing Logic
+            isDrawing = true;
+            
+            if (currentTool === 'pen') {
+                activeElement = {
+                    type: 'line',
+                    points: [startPoint],
+                    color: currentColor,
+                    lineWidth: 3
+                };
+            } else if (currentTool === 'rectangle' || currentTool === 'ellipse') {
+                activeElement = {
+                    type: currentTool,
+                    x: startPoint.x,
+                    y: startPoint.y,
+                    w: 0,
+                    h: 0,
+                    color: currentColor
+                };
+            }
+        }
+
+        function handleMouseMove(e) {
+            const worldPos = screenToWorld(e.clientX, e.clientY);
+            
+            if (isPanning) {
+                // Calculate new offset based on mouse movement since mousedown
+                offsetX = initialOffsetX + (e.clientX - panStartScreenX);
+                offsetY = initialOffsetY + (e.clientY - panStartScreenY);
+                redrawCanvas();
+                return;
+            }
+
+            if (!isDrawing || !activeElement) return;
+
+            if (currentTool === 'pen') {
+                // Pen: Add point to the line
+                activeElement.points.push(worldPos);
+            } else if (currentTool === 'rectangle' || currentTool === 'ellipse') {
+                // Shapes: Update width/height for preview
+                activeElement.x = Math.min(startPoint.x, worldPos.x);
+                activeElement.y = Math.min(startPoint.y, worldPos.y);
+                activeElement.w = Math.abs(worldPos.x - startPoint.x);
+                activeElement.h = Math.abs(worldPos.y - startPoint.y);
+                // Note: For drawing shapes from one corner, it's easier to use the min/abs logic.
+                // If we want the shape to expand from the start point, we'd calculate w/h as (worldPos - startPoint)
+                // We'll stick to the min/abs method for simple click-drag drawing.
+            }
+            
+            lastPoint = worldPos;
+            redrawCanvas();
+        }
+
+        function handleMouseUp(e) {
+            if (isPanning) {
+                isPanning = false;
+                container.style.cursor = currentTool === 'pan' ? 'grab' : 
+                                         currentTool === 'pen' ? 'crosshair' : 'default';
+                return;
+            }
+
+            if (!isDrawing || !activeElement) return;
+
+            // Finalize drawing
+            if (activeElement.type === 'line' && activeElement.points.length < 2) {
+                // If it's just a single dot (click without drag), discard it
+            } else {
+                elements.push(activeElement);
+            }
+            
+            activeElement = null;
+            isDrawing = false;
+            redrawCanvas();
+        }
+
+        // --- Panning UX (Spacebar) ---
+
+        let toolBeforePan = 'pen';
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && !e.repeat) {
+                e.preventDefault(); // Prevent page scroll
+                toolBeforePan = currentTool; // Save current tool
+                selectTool('pan');
+                container.style.cursor = 'grab';
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.code === 'Space' && !isDrawing) {
+                selectTool(toolBeforePan); // Restore previous tool
+                container.style.cursor = currentTool === 'pan' ? 'grab' : 
+                                         currentTool === 'pen' ? 'crosshair' : 'default';
+            }
+        });
+
+        // --- Zooming (Wheel Event) ---
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            
+            // Determine zoom direction and factor
+            const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1; // 10% zoom in/out
+            const newScale = scale * zoomFactor;
+
+            // Clamp scale to prevent issues (e.g., 0.1x to 10x)
+            if (newScale < 0.1 || newScale > 10) return;
+
+            // Get the mouse position in world coordinates BEFORE scaling
+            const worldMouseBefore = screenToWorld(e.clientX, e.clientY);
+
+            // Apply the new scale
+            scale = newScale;
+
+            // Get the mouse position in world coordinates AFTER scaling
+            const worldMouseAfter = screenToWorld(e.clientX, e.clientY);
+
+            // Calculate the difference in world coordinates (the pan needed to keep the center of zoom fixed)
+            // (worldMouseBefore - worldMouseAfter) * newScale = pan offset change
+            offsetX += (worldMouseBefore.x - worldMouseAfter.x) * scale;
+            offsetY += (worldMouseBefore.y - worldMouseAfter.y) * scale;
+
+            redrawCanvas();
+        }, { passive: false });
+
+        // --- Image Upload ---
+
+        imageUpload.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    // Place image in the center of the current view
+                    const rect = canvas.getBoundingClientRect();
+                    const centerX = rect.width / 2;
+                    const centerY = rect.height / 2;
+                    const worldCenter = screenToWorld(centerX, centerY + rect.top); // + rect.top to account for toolbar
+
+                    // Default size (clamp large images)
+                    const w = Math.min(img.width, 300);
+                    const h = Math.min(img.height, 300);
+
+                    elements.push({
+                        type: 'image',
+                        x: worldCenter.x - w / 2, // Center the image
+                        y: worldCenter.y - h / 2,
+                        w: w,
+                        h: h,
+                        src: event.target.result,
+                        img: img // Store the Image object for drawing
+                    });
+                    redrawCanvas();
+                    showMessage("Image uploaded and placed on canvas!");
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+
+            // Reset file input value so the same file can be selected again
+            e.target.value = ''; 
+        });
+
+        // --- Undo Functionality ---
+        undoButton.addEventListener('click', () => {
+            if (elements.length > 0) {
+                elements.pop();
+                redrawCanvas();
+            } else {
+                showMessage("Nothing left to undo!");
+            }
+        });
+
+        // --- Initialization ---
+
+        // Prevent context menu on right-click for panning UX
+        canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        canvas.addEventListener('mousedown', handleMouseDown);
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+        window.addEventListener('resize', resizeCanvas);
+
+        // Initial setup
+        resizeCanvas();
+        showMessage("Use the mouse wheel to zoom, and hold SPACE or right-click to pan!");
+
+    </script>
+</body>
+</html>
